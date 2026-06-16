@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>오늘 성과 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --purple:#534AB7; --purple-l:#EEEDFE; --purple-d:#3C3489;
+    --teal:#1D9E75;   --teal-l:#E1F5EE;
+    --coral:#D85A30;  --coral-l:#FAECE7;
+    --blue:#378ADD;   --blue-l:#E6F1FB;
+    --amber:#BA7517;  --amber-l:#FAEEDA;
+    --green:#639922;  --green-l:#EAF3DE;
+    --gray:#888780;   --gray-l:#F1EFE8;
+    --bg:#F5F4F2; --surface:#FFFFFF; --border:rgba(0,0,0,0.07);
+    --text:#1C1C1A; --muted:#5F5E5A; --hint:#999895;
+    --r:12px; --r-lg:16px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Apple SD Gothic Neo',-apple-system,'Malgun Gothic',sans-serif;
+         background:var(--bg); color:var(--text); font-size:14px; line-height:1.6; }
+
+  .hd { background:var(--surface); border-bottom:0.5px solid var(--border);
+        padding:18px 28px 0; position:sticky; top:0; z-index:100;
+        box-shadow:0 1px 8px rgba(0,0,0,0.04); }
+  .hd-top { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .logo { font-size:17px; font-weight:700; color:var(--purple); letter-spacing:-0.3px; }
+  .logo-sub { font-size:12px; color:var(--hint); margin-left:4px; }
+  .sync-info { margin-left:auto; font-size:11px; color:var(--hint); display:flex; align-items:center; gap:6px; }
+  .sync-dot { width:6px; height:6px; border-radius:50%; background:var(--teal); flex-shrink:0; }
+  .sync-dot.loading { background:var(--amber); animation:pulse 1s infinite; }
+  .sync-dot.error   { background:var(--coral); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .refresh-btn { padding:4px 10px; border:0.5px solid var(--border); border-radius:6px;
+                 background:var(--surface); color:var(--muted); font-size:11px; cursor:pointer; }
+  .refresh-btn:hover { background:var(--bg); color:var(--text); }
+  .edit-btn { padding:4px 12px; border:0.5px solid var(--purple); border-radius:6px;
+              background:var(--purple-l); color:var(--purple); font-size:11px; cursor:pointer;
+              font-weight:500; text-decoration:none; display:inline-flex; align-items:center; gap:4px; }
+  .edit-btn:hover { background:var(--purple); color:#fff; transition:all 0.15s; }
+
+  .tabs { display:flex; }
+  .tab { padding:9px 20px; font-size:13px; color:var(--muted); cursor:pointer;
+         border:none; background:none; border-radius:8px 8px 0 0; transition:all 0.15s; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--purple); font-weight:600; position:relative; }
+  .tab.active::after { content:''; position:absolute; bottom:0; left:0; right:0;
+                       height:2.5px; background:var(--purple); border-radius:2px 2px 0 0; }
+
+  .main { padding:24px 28px; max-width:1080px; margin:0 auto; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  .loading-wrap { display:flex; flex-direction:column; align-items:center;
+                  justify-content:center; min-height:300px; gap:12px; color:var(--hint); font-size:13px; }
+  .spinner { width:32px; height:32px; border:3px solid var(--border);
+             border-top-color:var(--purple); border-radius:50%; animation:spin 0.7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .error-box { background:#FEF2F2; border:0.5px solid #FECACA; border-radius:var(--r);
+               padding:24px; color:#991B1B; font-size:13px; line-height:2; }
+  .error-box code { background:#FEE2E2; padding:2px 6px; border-radius:4px; font-size:11px; }
+  .retry-btn { margin-top:12px; padding:8px 18px; background:var(--purple); color:#fff;
+               border:none; border-radius:7px; cursor:pointer; font-size:13px; font-weight:600; }
+
+  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:24px; }
+  .kpi { background:var(--surface); border:0.5px solid var(--border);
+         border-radius:var(--r-lg); padding:20px 18px 16px; position:relative; overflow:hidden; }
+  .kpi::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+  .kpi.k-purple::before { background:var(--purple); }
+  .kpi.k-teal::before   { background:var(--teal); }
+  .kpi.k-coral::before  { background:var(--coral); }
+  .kpi.k-blue::before   { background:var(--blue); }
+  .kpi.k-amber::before  { background:var(--amber); }
+  .kpi-label { font-size:11px; font-weight:500; color:var(--hint);
+               text-transform:uppercase; letter-spacing:0.07em; margin-bottom:10px; }
+  .kpi-value { font-size:30px; font-weight:700; letter-spacing:-1px; line-height:1; }
+  .kpi.k-purple .kpi-value { color:var(--purple); }
+  .kpi.k-teal   .kpi-value { color:var(--teal); }
+  .kpi.k-coral  .kpi-value { color:var(--coral); }
+  .kpi.k-blue   .kpi-value { color:var(--blue); }
+  .kpi.k-amber  .kpi-value { color:var(--amber); }
+  .kpi-unit { font-size:13px; font-weight:400; opacity:0.7; margin-left:2px; }
+  .kpi-sub { font-size:11px; color:var(--hint); margin-top:8px; padding-top:8px;
+             border-top:0.5px solid var(--border); }
+
+  .charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
+  .card { background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r-lg); padding:20px; }
+  .card.full { grid-column:1/-1; }
+  .card-title { font-size:13px; font-weight:600; color:var(--text); margin-bottom:3px; }
+  .card-desc  { font-size:11px; color:var(--hint); margin-bottom:16px; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+  .leg { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); }
+  .leg-dot { width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+
+  .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:500; }
+  .b-direct   { background:var(--purple-l); color:var(--purple-d); }
+  .b-indirect { background:var(--teal-l);   color:#085041; }
+  .b-sat      { background:var(--blue-l);   color:#0C447C; }
+  .b-chg      { background:var(--green-l);  color:#27500A; }
+  .b-part     { background:var(--amber-l);  color:#633806; }
+  .b-other    { background:var(--gray-l);   color:#444441; }
+
+  .filter-row { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+  .filter-row select { padding:7px 12px; border:0.5px solid var(--border); border-radius:7px;
+                       background:var(--surface); color:var(--text); font-size:12px; cursor:pointer; }
+  .filter-row select:focus { outline:none; border-color:var(--purple); }
+  .fc { font-size:12px; color:var(--hint); margin-left:auto; }
+  .tw { overflow-x:auto; border-radius:var(--r); border:0.5px solid var(--border); background:var(--surface); }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:11px; font-weight:500; color:var(--hint);
+       padding:10px 14px; border-bottom:0.5px solid var(--border); background:var(--bg); white-space:nowrap; }
+  td { padding:9px 14px; border-bottom:0.5px solid var(--border); font-size:12px; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:var(--bg); }
+  .num { font-variant-numeric:tabular-nums; text-align:right; font-weight:600; }
+
+  .qa-wrap { max-width:700px; }
+  .sec-label { font-size:11px; font-weight:600; color:var(--hint); text-transform:uppercase;
+               letter-spacing:0.07em; margin-bottom:10px; }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:20px; }
+  .chip { padding:6px 14px; border:0.5px solid var(--border); border-radius:20px; font-size:12px;
+          color:var(--muted); cursor:pointer; background:var(--surface); transition:all 0.12s; }
+  .chip:hover { background:var(--purple-l); color:var(--purple); border-color:#AFA9EC; }
+  .qa-row { display:flex; gap:8px; margin-bottom:16px; }
+  .qa-input { flex:1; padding:10px 14px; border:0.5px solid var(--border); border-radius:8px;
+              background:var(--surface); color:var(--text); font-size:13px; }
+  .qa-input:focus { outline:none; border-color:var(--purple); }
+  .qa-btn { padding:10px 20px; border:none; border-radius:8px; background:var(--purple);
+            color:#fff; font-size:13px; cursor:pointer; font-weight:600; transition:opacity 0.15s; }
+  .qa-btn:hover { opacity:0.88; }
+  .qa-btn:disabled { opacity:0.45; cursor:not-allowed; }
+  .qa-box { background:var(--surface); border:0.5px solid var(--border); border-radius:var(--r);
+            padding:20px; font-size:13px; line-height:1.85; color:var(--text); min-height:80px; white-space:pre-wrap; }
+  .hint-text { color:var(--hint); }
+
+  @media (max-width:700px) {
+    .kpi-row { grid-template-columns:repeat(2,1fr); }
+    .charts-grid { grid-template-columns:1fr; }
+    .main,.hd { padding:14px 14px 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hd">
+  <div class="hd-top">
+    <span class="logo">오늘 (oneultoday)</span>
+    <span class="logo-sub">전체 프로젝트 성과 대시보드</span>
+    <div class="sync-info">
+      <span class="sync-dot loading" id="syncDot"></span>
+      <span id="syncText">데이터 불러오는 중...</span>
+      <a class="edit-btn" href="https://docs.google.com/spreadsheets/d/1vcRm-6IhwI4SqUBAKF6Z9Joy-C2wAZK1afZapBdh1_U/edit" target="_blank">✏️ 데이터 수정</a>
+      <button class="refresh-btn" onclick="loadData()">↻ 새로고침</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('overview',this)">📊 핵심 성과</button>
+    <button class="tab" onclick="showTab('data',this)">📋 데이터 목록</button>
+    <button class="tab" onclick="showTab('qa',this)">🔍 질문 분석</button>
+  </div>
+</div>
+
+<div class="main">
+  <div id="tab-overview" class="panel active">
+    <div id="overview-content" class="loading-wrap">
+      <div class="spinner"></div><span>구글 시트에서 데이터를 불러오는 중...</span>
+    </div>
+  </div>
+
+  <div id="tab-data" class="panel">
+    <div id="data-content" class="loading-wrap">
+      <div class="spinner"></div><span>데이터 준비 중...</span>
+    </div>
+  </div>
+
+  <div id="tab-qa" class="panel">
+    <div class="qa-wrap">
+      <div class="sec-label">자주 묻는 질문</div>
+      <div class="chips">
+        <button class="chip" onclick="askQ('2024~2025년 직접수혜 참여자 수 합계는?')">2024~2025 참여자 수</button>
+        <button class="chip" onclick="askQ('연도별 만족도 평균 추이를 분석해줘')">연도별 만족도 추이</button>
+        <button class="chip" onclick="askQ('프로젝트별 직접수혜 참여자를 많은 순으로 알려줘')">프로젝트별 참여자 순위</button>
+        <button class="chip" onclick="askQ('간접수혜 참여자가 가장 많은 연도와 수치는?')">간접수혜 최대 연도</button>
+        <button class="chip" onclick="askQ('변화목표 항목의 연도별 평균은?')">변화목표 연도별 평균</button>
+        <button class="chip" onclick="askQ('아트퍼스트 프로젝트의 연도별 참여자 수와 만족도 평균은?')">아트퍼스트 현황</button>
+        <button class="chip" onclick="askQ('만족도가 가장 높은 프로젝트와 낮은 프로젝트는?')">만족도 최고·최저</button>
+      </div>
+      <div class="sec-label">직접 질문</div>
+      <div class="qa-row">
+        <input class="qa-input" id="qaInput" type="text"
+               placeholder="예: 선라이즈캠프 2024년 평균 만족도는?"
+               onkeydown="if(event.key==='Enter')sendQA()"/>
+        <button class="qa-btn" id="qaBtn" onclick="sendQA()">분석</button>
+      </div>
+      <div class="qa-box" id="qaBox">
+        <span class="hint-text">질문을 입력하면 데이터를 기반으로 즉시 계산해드립니다.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── API URL ───────────────────────────────────────────────────────────────────
+const API_URL = 'https://script.google.com/macros/s/AKfycbxIQQSj2mA5GDt9df1WJ3_C8eb350VSPS3tf3JLGpi79Z1sh41ivEoA18r0iB1BeN3JvQ/exec';
+
+const C = { purple:'#534AB7', teal:'#1D9E75', coral:'#D85A30', blue:'#378ADD', amber:'#BA7517', green:'#639922', gray:'#888780', pink:'#C0577A' };
+const PALETTE = Object.values(C);
+const charts = {};
+
+// ── 데이터 정규화 ─────────────────────────────────────────────────────────────
+// 구글 시트 컬럼명을 유연하게 매핑
+function normalizeRow(raw) {
+  // 가능한 컬럼명 변형 처리
+  const get = (...keys) => {
+    for (const k of keys) {
+      if (raw[k] !== undefined && raw[k] !== '') return String(raw[k]).trim();
+    }
+    return '';
+  };
+  const 내용 = get('측정내용(설문내용)', '측정내용', '내용', '설문내용');
+  const 연도  = get('년도', '연도', 'year');
+  const 수혜  = get('수혜대상', '수혜');
+  const 분류  = get('측정분류', '분류');
+  const 프로젝트 = get('프로젝트', 'project');
+  const 수치raw = get('수치', 'value', '값');
+  const 수치  = parseFloat(수치raw);
+
+  if (!내용 || isNaN(수치)) return null;
+  return { 내용, 연도, 수혜, 분류, 프로젝트, 수치 };
+}
+
+// ── 집계 유틸 ─────────────────────────────────────────────────────────────────
+const groupBy = (arr, key) => arr.reduce((a,r) => { (a[r[key]]=a[r[key]]||[]).push(r); return a; }, {});
+const sumBy   = (arr, key) => arr.reduce((s,r) => s+(r[key]||0), 0);
+const avgBy   = (arr, key) => { const v=arr.map(r=>r[key]).filter(x=>x>0&&x<=10); return v.length ? v.reduce((a,b)=>a+b)/v.length : 0; };
+function mkChart(id, cfg) { if(charts[id]) charts[id].destroy(); charts[id] = new Chart(document.getElementById(id), cfg); }
+
+// ── 렌더 ─────────────────────────────────────────────────────────────────────
+function render(DATA) {
+  const directPart   = DATA.filter(r=>r.수혜==='직접수혜'&&r.분류==='참여자수');
+  const indirectPart = DATA.filter(r=>r.수혜==='간접수혜'&&r.분류==='참여자수');
+  const satRows      = DATA.filter(r=>r.수혜==='직접수혜'&&r.분류==='만족도'&&r.수치>0&&r.수치<=10);
+  const chgRows      = DATA.filter(r=>r.분류==='변화목표'&&r.수치>0&&r.수치<=10);
+
+  const totalDirect   = Math.round(sumBy(directPart,'수치'));
+  const totalIndirect = Math.round(sumBy(indirectPart,'수치'));
+  const avgSat        = avgBy(satRows,'수치');
+  const avgChg        = avgBy(chgRows,'수치');
+  const projCount     = new Set(DATA.map(r=>r.프로젝트).filter(Boolean)).size;
+
+  const years = [...new Set(DATA.map(r=>r.연도).filter(Boolean))].sort();
+
+  const yearDP={}, yearIP={}, yearSat={}, yearChg={};
+  years.forEach(y => {
+    yearDP[y]  = Math.round(sumBy(directPart.filter(r=>r.연도===y),'수치'));
+    yearIP[y]  = Math.round(sumBy(indirectPart.filter(r=>r.연도===y),'수치'));
+    const ys   = satRows.filter(r=>r.연도===y);
+    yearSat[y] = ys.length ? +avgBy(ys,'수치').toFixed(2) : null;
+    const yc   = chgRows.filter(r=>r.연도===y);
+    yearChg[y] = yc.length ? +avgBy(yc,'수치').toFixed(2) : null;
+  });
+
+  const projG    = groupBy(DATA.filter(r=>r.프로젝트),'프로젝트');
+  const projPart = Object.entries(projG)
+    .map(([p,rows])=>[p,Math.round(sumBy(rows.filter(r=>r.수혜==='직접수혜'&&r.분류==='참여자수'),'수치'))])
+    .filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const projSat  = Object.entries(projG)
+    .map(([p,rows])=>{
+      const s=rows.filter(r=>r.수혜==='직접수혜'&&(r.분류==='만족도'||r.분류==='대표만족도')&&r.수치>0&&r.수치<=10);
+      return [p, s.length ? +avgBy(s,'수치').toFixed(2) : null];
+    }).filter(([,v])=>v).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  const minSatVal = Math.min(...[...Object.values(yearSat),...Object.values(yearChg)].filter(v=>v)) - 0.3;
+  const yMin = Math.max(0, +minSatVal.toFixed(1));
+  const yrsWithTrend = years.filter(y=>yearSat[y]||yearChg[y]);
+
+  // ── KPI + 차트 HTML 삽입 ──
+  document.getElementById('overview-content').innerHTML = `
+    <div class="kpi-row">
+      <div class="kpi k-purple">
+        <div class="kpi-label">직접수혜 참여자</div>
+        <div class="kpi-value">${totalDirect.toLocaleString()}<span class="kpi-unit">명</span></div>
+        <div class="kpi-sub">프로젝트 직접 참여 청년 누계</div>
+      </div>
+      <div class="kpi k-teal">
+        <div class="kpi-label">간접수혜</div>
+        <div class="kpi-value">${totalIndirect.toLocaleString()}<span class="kpi-unit">명</span></div>
+        <div class="kpi-sub">관람객·조회수 등 간접 접촉 누계</div>
+      </div>
+      <div class="kpi k-coral">
+        <div class="kpi-label">만족도 평균</div>
+        <div class="kpi-value">${avgSat.toFixed(2)}<span class="kpi-unit">점</span></div>
+        <div class="kpi-sub">직접수혜 만족도 / 10점 만점</div>
+      </div>
+      <div class="kpi k-blue">
+        <div class="kpi-label">변화목표 평균</div>
+        <div class="kpi-value">${avgChg.toFixed(2)}<span class="kpi-unit">점</span></div>
+        <div class="kpi-sub">전체 변화목표 / 10점 만점</div>
+      </div>
+      <div class="kpi k-amber">
+        <div class="kpi-label">운영 프로젝트</div>
+        <div class="kpi-value">${projCount}<span class="kpi-unit">개</span></div>
+        <div class="kpi-sub">${Math.min(...years.map(Number))} – ${Math.max(...years.map(Number))} 누적</div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="card full">
+        <div class="card-title">연도별 직접수혜 참여자 수</div>
+        <div class="card-desc">측정분류 '참여자수' 중 직접수혜 합계 (명)</div>
+        <div style="position:relative;height:220px"><canvas id="cYearPart"></canvas></div>
+      </div>
+      <div class="card full">
+        <div class="card-title">연도별 만족도 · 변화목표 평균 추이</div>
+        <div class="card-desc">직접수혜 기준 / 10점 만점</div>
+        <div class="legend">
+          <span class="leg"><span class="leg-dot" style="background:var(--coral)"></span>만족도 평균</span>
+          <span class="leg"><span class="leg-dot" style="background:var(--blue)"></span>변화목표 평균</span>
+        </div>
+        <div style="position:relative;height:200px"><canvas id="cTrend"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">프로젝트별 직접수혜 참여자 수</div>
+        <div class="card-desc">전체 기간 합계</div>
+        <div style="position:relative;height:300px"><canvas id="cProjPart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">직접 · 간접 수혜 비율</div>
+        <div class="card-desc">참여자수 기준</div>
+        <div class="legend">
+          <span class="leg"><span class="leg-dot" style="background:var(--purple)"></span>직접 ${totalDirect.toLocaleString()}명</span>
+          <span class="leg"><span class="leg-dot" style="background:var(--teal)"></span>간접 ${totalIndirect.toLocaleString()}명</span>
+        </div>
+        <div style="position:relative;height:150px"><canvas id="cDonut"></canvas></div>
+        <div style="margin-top:20px">
+          <div class="card-title" style="margin-bottom:3px">프로젝트별 만족도 평균 (상위 8)</div>
+          <div class="card-desc">직접수혜 만족도 항목 평균</div>
+          <div style="position:relative;height:210px"><canvas id="cProjSat"></canvas></div>
+        </div>
+      </div>
+    </div>`;
+
+  // 차트 그리기
+  mkChart('cYearPart', { type:'bar', data:{
+    labels:years,
+    datasets:[{ data:years.map(y=>yearDP[y]||0),
+      backgroundColor:years.map(y=>Number(y)>=2024?C.purple:'#AFA9EC'), borderRadius:5 }]
+  }, options:{ responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.parsed.y.toLocaleString()+'명'}} },
+    scales:{ x:{ticks:{autoSkip:false}}, y:{beginAtZero:true, ticks:{callback:v=>v.toLocaleString()}} }
+  }});
+
+  mkChart('cTrend', { type:'line', data:{
+    labels:yrsWithTrend,
+    datasets:[
+      { label:'만족도', data:yrsWithTrend.map(y=>yearSat[y]),
+        borderColor:C.coral, backgroundColor:'rgba(216,90,48,0.08)',
+        tension:0.35, pointBackgroundColor:C.coral, pointRadius:5, fill:true, spanGaps:true },
+      { label:'변화목표', data:yrsWithTrend.map(y=>yearChg[y]),
+        borderColor:C.blue, backgroundColor:'rgba(55,138,221,0.06)',
+        tension:0.35, pointBackgroundColor:C.blue, pointRadius:5, fill:true, spanGaps:true }
+    ]
+  }, options:{ responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false} },
+    scales:{ y:{ min:yMin, ticks:{callback:v=>v.toFixed(1)} } }
+  }});
+
+  mkChart('cProjPart', { type:'bar', data:{
+    labels:projPart.map(([k])=>k),
+    datasets:[{ data:projPart.map(([,v])=>v),
+      backgroundColor:projPart.map((_,i)=>PALETTE[i%PALETTE.length]), borderRadius:4 }]
+  }, options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>ctx.parsed.x.toLocaleString()+'명'}} },
+    scales:{ x:{beginAtZero:true, ticks:{callback:v=>v.toLocaleString()}}, y:{ticks:{font:{size:11}}} }
+  }});
+
+  mkChart('cDonut', { type:'doughnut', data:{
+    labels:['직접수혜','간접수혜'],
+    datasets:[{ data:[totalDirect,totalIndirect], backgroundColor:[C.purple,C.teal], borderWidth:0 }]
+  }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} }});
+
+  if (projSat.length) {
+    const psMin = Math.max(0, Math.min(...projSat.map(([,v])=>v)) - 0.5);
+    mkChart('cProjSat', { type:'bar', data:{
+      labels:projSat.map(([k])=>k),
+      datasets:[{ data:projSat.map(([,v])=>v), backgroundColor:C.coral, borderRadius:4 }]
+    }, options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ min:psMin, ticks:{callback:v=>v.toFixed(1)} }, y:{ticks:{font:{size:11}}} }
+    }});
+  }
+
+  // ── 데이터 목록 탭 ──
+  const years2 = [...new Set(DATA.map(r=>r.연도).filter(Boolean))].sort();
+  const projs2 = [...new Set(DATA.map(r=>r.프로젝트).filter(Boolean))].sort();
+  let selYr='', selBn='', selMs='', selPj='';
+
+  const bB = v => v==='직접수혜'
+    ? `<span class="badge b-direct">직접수혜</span>`
+    : `<span class="badge b-indirect">간접수혜</span>`;
+  const bM = v => {
+    const m={'만족도':'b-sat','변화목표':'b-chg','참여자수':'b-part','대표만족도':'b-sat'};
+    return `<span class="badge ${m[v]||'b-other'}">${v}</span>`;
+  };
+
+  function renderTable() {
+    let rows = DATA;
+    if(selYr) rows=rows.filter(r=>r.연도===selYr);
+    if(selBn) rows=rows.filter(r=>r.수혜===selBn);
+    if(selMs) rows=rows.filter(r=>r.분류===selMs);
+    if(selPj) rows=rows.filter(r=>r.프로젝트===selPj);
+    document.getElementById('tCount').textContent = rows.length+'건';
+    document.getElementById('tbody').innerHTML = rows.map(r=>`
+      <tr>
+        <td style="max-width:260px;word-break:break-all;font-size:11px;color:var(--muted)">${r.내용.slice(0,70)}${r.내용.length>70?'…':''}</td>
+        <td>${r.연도}</td>
+        <td style="font-size:11px">${r.프로젝트}</td>
+        <td>${bB(r.수혜)}</td>
+        <td>${bM(r.분류)}</td>
+        <td class="num">${r.수치>0?r.수치.toLocaleString():'-'}</td>
+      </tr>`).join('');
+  }
+
+  function mkSel(id, opts, placeholder, onChange) {
+    const el = document.getElementById(id);
+    el.innerHTML = `<option value="">${placeholder}</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+    el.onchange = e => { onChange(e.target.value); renderTable(); };
+  }
+
+  document.getElementById('data-content').innerHTML = `
+    <div class="filter-row">
+      <select id="fYear"></select>
+      <select id="fBenefit">
+        <option value="">수혜대상 전체</option>
+        <option value="직접수혜">직접수혜</option>
+        <option value="간접수혜">간접수혜</option>
+      </select>
+      <select id="fMeasure">
+        <option value="">측정분류 전체</option>
+        <option value="만족도">만족도</option>
+        <option value="변화목표">변화목표</option>
+        <option value="참여자수">참여자수</option>
+        <option value="대표만족도">대표만족도</option>
+        <option value="기타">기타</option>
+      </select>
+      <select id="fProject"></select>
+      <span class="fc" id="tCount"></span>
+    </div>
+    <div class="tw"><table>
+      <thead><tr>
+        <th style="width:36%">측정내용</th><th>연도</th><th>프로젝트</th>
+        <th>수혜대상</th><th>측정분류</th><th style="text-align:right">수치</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>`;
+
+  mkSel('fYear',    years2, '연도 전체',     v=>selYr=v);
+  mkSel('fProject', projs2, '프로젝트 전체', v=>selPj=v);
+  document.getElementById('fBenefit').onchange = e => { selBn=e.target.value; renderTable(); };
+  document.getElementById('fMeasure').onchange = e => { selMs=e.target.value; renderTable(); };
+  renderTable();
+
+  // QA용 데이터 저장
+  window._DATA = DATA;
+  window._SUMMARY = `오늘(oneultoday) 성과 데이터 (구글 시트 실시간 연동 / ${DATA.length}건)
+
+[핵심 KPI]
+- 직접수혜 참여자 누계: ${totalDirect.toLocaleString()}명
+- 간접수혜(관람·조회 등): ${totalIndirect.toLocaleString()}명
+- 직접수혜 만족도 평균: ${avgSat.toFixed(2)}점/10점
+- 변화목표 평균: ${avgChg.toFixed(2)}점/10점
+- 운영 프로젝트 수: ${projCount}개
+
+[연도별 직접수혜 참여자]
+${years.map(y=>`${y}년: ${(yearDP[y]||0).toLocaleString()}명`).join(' / ')}
+
+[연도별 간접수혜]
+${years.map(y=>`${y}년: ${(yearIP[y]||0).toLocaleString()}명`).join(' / ')}
+
+[연도별 만족도 평균]
+${years.filter(y=>yearSat[y]).map(y=>`${y}년: ${yearSat[y]}점`).join(' / ')}
+
+[연도별 변화목표 평균]
+${years.filter(y=>yearChg[y]).map(y=>`${y}년: ${yearChg[y]}점`).join(' / ')}
+
+[프로젝트별 직접수혜 참여자 상위]
+${projPart.map(([p,v])=>`${p}: ${v.toLocaleString()}명`).join(' / ')}
+
+[프로젝트별 만족도 평균 상위]
+${projSat.map(([p,v])=>`${p}: ${v}점`).join(' / ')}`;
+}
+
+// ── 탭 ───────────────────────────────────────────────────────────────────────
+function showTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+// ── QA 자체 계산 엔진 ─────────────────────────────────────────────────────────
+function askQ(q) { document.getElementById('qaInput').value=q; sendQA(); }
+
+function analyzeQuery(q) {
+  const D = window._DATA || [];
+  if (!D.length) return '데이터가 아직 로드되지 않았습니다.';
+
+  const qn = q.replace(/\s/g,'').toLowerCase();
+
+  // ── 유틸 ──
+  const sumBy  = (arr,k) => arr.reduce((s,r)=>s+(r[k]||0),0);
+  const avgBy  = (arr,k) => { const v=arr.map(r=>r[k]).filter(x=>x>0&&x<=10); return v.length?(v.reduce((a,b)=>a+b)/v.length):0; };
+  const groupBy= (arr,k) => arr.reduce((a,r)=>{ (a[r[k]]=a[r[k]]||[]).push(r); return a; },{});
+  const fmt    = n => Number.isInteger(n)?n.toLocaleString():n.toFixed(2);
+  const years  = [...new Set(D.map(r=>r.연도).filter(Boolean))].sort();
+  const projs  = [...new Set(D.map(r=>r.프로젝트).filter(Boolean))].sort();
+
+  // ── 연도 범위 파싱 ──
+  const yearRange = q.match(/(\d{4})[~\-~](\d{4})/);
+  const singleYear= q.match(/(\d{4})년?/);
+
+  // ── 특정 프로젝트 감지 ──
+  const matchedProj = projs.find(p => qn.includes(p.replace(/\s/g,'').toLowerCase()));
+
+  // ── 질문 유형 판별 & 계산 ──
+
+  // 1) 연도 범위 + 참여자
+  if (yearRange && (qn.includes('참여자') || qn.includes('참여'))) {
+    const [,y1,y2] = yearRange;
+    const isBenefit = qn.includes('직접') ? '직접수혜' : qn.includes('간접') ? '간접수혜' : null;
+    let rows = D.filter(r=>r.분류==='참여자수' && r.연도>=y1 && r.연도<=y2);
+    if (isBenefit) rows = rows.filter(r=>r.수혜===isBenefit);
+    const total = Math.round(sumBy(rows,'수치'));
+    const byYear = {};
+    rows.forEach(r=>{ byYear[r.연도]=(byYear[r.연도]||0)+r.수치; });
+    const label = isBenefit || '전체';
+    let ans = `📊 ${y1}~${y2}년 ${label} 참여자 수\n\n`;
+    ans += `합계: ${total.toLocaleString()}명\n\n`;
+    ans += `연도별 내역:\n`;
+    Object.entries(byYear).sort().forEach(([y,v])=>{ ans+=`  ${y}년: ${Math.round(v).toLocaleString()}명\n`; });
+    return ans;
+  }
+
+  // 2) 특정 프로젝트 분석
+  if (matchedProj) {
+    const pd = D.filter(r=>r.프로젝트===matchedProj);
+    const byYear = groupBy(pd,'연도');
+    let ans = `📌 ${matchedProj} 프로젝트 분석\n\n`;
+    Object.keys(byYear).sort().forEach(y=>{
+      const rows = byYear[y];
+      const part = Math.round(sumBy(rows.filter(r=>r.분류==='참여자수'&&r.수혜==='직접수혜'),'수치'));
+      const partI= Math.round(sumBy(rows.filter(r=>r.분류==='참여자수'&&r.수혜==='간접수혜'),'수치'));
+      const sat  = rows.filter(r=>(r.분류==='만족도'||r.분류==='대표만족도')&&r.수혜==='직접수혜'&&r.수치>0&&r.수치<=10);
+      const chg  = rows.filter(r=>r.분류==='변화목표'&&r.수치>0&&r.수치<=10);
+      ans += `[${y}년]\n`;
+      if (part>0)  ans += `  직접수혜 참여자: ${part.toLocaleString()}명\n`;
+      if (partI>0) ans += `  간접수혜: ${partI.toLocaleString()}명\n`;
+      if (sat.length) ans += `  만족도 평균: ${avgBy(sat,'수치').toFixed(2)}점 (${sat.length}항목)\n`;
+      if (chg.length) ans += `  변화목표 평균: ${avgBy(chg,'수치').toFixed(2)}점 (${chg.length}항목)\n`;
+      ans += '\n';
+    });
+    const totalPart = Math.round(sumBy(pd.filter(r=>r.분류==='참여자수'&&r.수혜==='직접수혜'),'수치'));
+    const allSat    = pd.filter(r=>(r.분류==='만족도'||r.분류==='대표만족도')&&r.수혜==='직접수혜'&&r.수치>0&&r.수치<=10);
+    ans += `전체 직접수혜 참여자 누계: ${totalPart.toLocaleString()}명\n`;
+    if (allSat.length) ans += `전체 만족도 평균: ${avgBy(allSat,'수치').toFixed(2)}점`;
+    return ans;
+  }
+
+  // 3) 연도별 만족도 추이
+  if (qn.includes('만족도') && (qn.includes('추이')||qn.includes('연도별')||qn.includes('변화'))) {
+    let ans = `📈 연도별 만족도 평균 추이\n\n`;
+    years.forEach(y=>{
+      const rows = D.filter(r=>r.연도===y&&r.수혜==='직접수혜'&&(r.분류==='만족도'||r.분류==='대표만족도')&&r.수치>0&&r.수치<=10);
+      if (rows.length) ans += `${y}년: ${avgBy(rows,'수치').toFixed(2)}점 (${rows.length}항목)\n`;
+    });
+    const allSat = D.filter(r=>r.수혜==='직접수혜'&&(r.분류==='만족도'||r.분류==='대표만족도')&&r.수치>0&&r.수치<=10);
+    ans += `\n전체 평균: ${avgBy(allSat,'수치').toFixed(2)}점`;
+    return ans;
+  }
+
+  // 4) 연도별 변화목표 추이
+  if (qn.includes('변화목표') && (qn.includes('추이')||qn.includes('연도별')||qn.includes('평균'))) {
+    let ans = `📈 연도별 변화목표 평균\n\n`;
+    years.forEach(y=>{
+      const rows = D.filter(r=>r.연도===y&&r.분류==='변화목표'&&r.수치>0&&r.수치<=10);
+      if (rows.length) ans += `${y}년: ${avgBy(rows,'수치').toFixed(2)}점 (${rows.length}항목)\n`;
+    });
+    const all = D.filter(r=>r.분류==='변화목표'&&r.수치>0&&r.수치<=10);
+    ans += `\n전체 평균: ${avgBy(all,'수치').toFixed(2)}점`;
+    return ans;
+  }
+
+  // 5) 프로젝트별 참여자 순위
+  if (qn.includes('프로젝트') && (qn.includes('순위')||qn.includes('많은')||qn.includes('참여자'))) {
+    const pg = groupBy(D.filter(r=>r.프로젝트),'프로젝트');
+    const isBenefit = qn.includes('직접')?'직접수혜':qn.includes('간접')?'간접수혜':'직접수혜';
+    const sorted = Object.entries(pg)
+      .map(([p,rows])=>[p, Math.round(sumBy(rows.filter(r=>r.분류==='참여자수'&&r.수혜===isBenefit),'수치'))])
+      .filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+    let ans = `🏆 프로젝트별 ${isBenefit} 참여자 수 순위\n\n`;
+    sorted.forEach(([p,v],i)=>{ ans+=`${i+1}위. ${p}: ${v.toLocaleString()}명\n`; });
+    return ans;
+  }
+
+  // 6) 간접수혜 최대 연도
+  if (qn.includes('간접수혜') && (qn.includes('최대')||qn.includes('가장많')||qn.includes('많은'))) {
+    const byYear = {};
+    D.filter(r=>r.수혜==='간접수혜'&&r.분류==='참여자수').forEach(r=>{ byYear[r.연도]=(byYear[r.연도]||0)+r.수치; });
+    const sorted = Object.entries(byYear).sort((a,b)=>b[1]-a[1]);
+    let ans = `📊 연도별 간접수혜 참여자 수\n\n`;
+    sorted.forEach(([y,v])=>{ ans+=`${y}년: ${Math.round(v).toLocaleString()}명\n`; });
+    if (sorted.length) ans+=`\n최다: ${sorted[0][0]}년 (${Math.round(sorted[0][1]).toLocaleString()}명)`;
+    return ans;
+  }
+
+  // 7) 만족도 최고·최저 프로젝트
+  if (qn.includes('만족도') && (qn.includes('최고')||qn.includes('최저')||qn.includes('높은')||qn.includes('낮은'))) {
+    const pg = groupBy(D.filter(r=>r.프로젝트),'프로젝트');
+    const sorted = Object.entries(pg)
+      .map(([p,rows])=>{
+        const s=rows.filter(r=>r.수혜==='직접수혜'&&(r.분류==='만족도'||r.분류==='대표만족도')&&r.수치>0&&r.수치<=10);
+        return [p, s.length?avgBy(s,'수치'):null, s.length];
+      })
+      .filter(([,v])=>v).sort((a,b)=>b[1]-a[1]);
+    let ans = `📊 프로젝트별 만족도 평균 순위\n\n`;
+    ans += `🥇 최고: ${sorted[0][0]} (${sorted[0][1].toFixed(2)}점, ${sorted[0][2]}항목)\n`;
+    ans += `🥉 최저: ${sorted[sorted.length-1][0]} (${sorted[sorted.length-1][1].toFixed(2)}점, ${sorted[sorted.length-1][2]}항목)\n\n`;
+    ans += `전체 순위:\n`;
+    sorted.forEach(([p,v,,],i)=>{ ans+=`  ${i+1}. ${p}: ${v.toFixed(2)}점\n`; });
+    return ans;
+  }
+
+  // 8) 단순 참여자 합계
+  if (qn.includes('참여자') || qn.includes('참여')) {
+    const isBenefit = qn.includes('직접')?'직접수혜':qn.includes('간접')?'간접수혜':null;
+    const yr = singleYear?singleYear[1]:null;
+    let rows = D.filter(r=>r.분류==='참여자수');
+    if (isBenefit) rows=rows.filter(r=>r.수혜===isBenefit);
+    if (yr) rows=rows.filter(r=>r.연도===yr);
+    const total = Math.round(sumBy(rows,'수치'));
+    const label = [yr?yr+'년':'전체기간', isBenefit||'전체'].join(' ');
+    return `📊 ${label} 참여자 수: ${total.toLocaleString()}명\n(집계 항목 수: ${rows.length}건)`;
+  }
+
+  // 9) 단순 만족도
+  if (qn.includes('만족도')) {
+    const yr = singleYear?singleYear[1]:null;
+    let rows = D.filter(r=>(r.분류==='만족도'||r.분류==='대표만족도')&&r.수혜==='직접수혜'&&r.수치>0&&r.수치<=10);
+    if (yr) rows=rows.filter(r=>r.연도===yr);
+    const label = yr?yr+'년':'전체';
+    return `📊 ${label} 직접수혜 만족도 평균: ${avgBy(rows,'수치').toFixed(2)}점\n(집계 항목 수: ${rows.length}건)`;
+  }
+
+  // 10) 전체 현황 요약
+  if (qn.includes('전체')||qn.includes('현황')||qn.includes('요약')) {
+    const dp  = Math.round(sumBy(D.filter(r=>r.수혜==='직접수혜'&&r.분류==='참여자수'),'수치'));
+    const ip  = Math.round(sumBy(D.filter(r=>r.수혜==='간접수혜'&&r.분류==='참여자수'),'수치'));
+    const sat = D.filter(r=>r.수혜==='직접수혜'&&(r.분류==='만족도'||r.분류==='대표만족도')&&r.수치>0&&r.수치<=10);
+    const chg = D.filter(r=>r.분류==='변화목표'&&r.수치>0&&r.수치<=10);
+    return `📊 오늘(oneultoday) 전체 성과 요약\n\n직접수혜 참여자: ${dp.toLocaleString()}명\n간접수혜: ${ip.toLocaleString()}명\n만족도 평균: ${avgBy(sat,'수치').toFixed(2)}점\n변화목표 평균: ${avgBy(chg,'수치').toFixed(2)}점\n운영 프로젝트: ${new Set(D.map(r=>r.프로젝트).filter(Boolean)).size}개\n데이터 기간: ${years[0]}~${years[years.length-1]}년`;
+  }
+
+  // fallback: 키워드로 관련 데이터 검색
+  const keywords = q.replace(/[은는이가을를의]/g,'').split(/\s+/).filter(k=>k.length>1);
+  const matched  = D.filter(r=>keywords.some(k=>r.내용.includes(k)||r.프로젝트.includes(k)));
+  if (matched.length) {
+    const nums = matched.filter(r=>r.수치>0);
+    let ans = `🔍 "${q}" 관련 데이터 ${matched.length}건\n\n`;
+    nums.slice(0,10).forEach(r=>{ ans+=`• [${r.연도}] ${r.프로젝트} - ${r.내용.slice(0,30)}: ${r.수치}\n`; });
+    if (nums.length>10) ans+=`\n...외 ${nums.length-10}건`;
+    return ans;
+  }
+
+  return `❓ "${q}"에 대한 데이터를 찾지 못했습니다.\n\n아래 질문들을 시도해보세요:\n• 2024~2025년 직접수혜 참여자 수 합계는?\n• 연도별 만족도 평균 추이\n• 프로젝트별 참여자 순위\n• 아트퍼스트 프로젝트 현황`;
+}
+
+function sendQA() {
+  const q = document.getElementById('qaInput').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('qaBtn');
+  btn.disabled=true; btn.textContent='계산 중...';
+  document.getElementById('qaBox').innerHTML='<span class="hint-text">분석 중...</span>';
+  setTimeout(()=>{
+    document.getElementById('qaBox').textContent = analyzeQuery(q);
+    btn.disabled=false; btn.textContent='분석';
+  }, 300);
+}
+
+// ── 데이터 로드 ───────────────────────────────────────────────────────────────
+async function loadData() {
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncText');
+  dot.className = 'sync-dot loading';
+  txt.textContent = '데이터 불러오는 중...';
+  document.getElementById('overview-content').innerHTML =
+    '<div class="loading-wrap"><div class="spinner"></div><span>구글 시트에서 데이터를 불러오는 중...</span></div>';
+
+  try {
+    const res  = await fetch(API_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+
+    // Apps Script가 반환하는 구조: { data: [...] }
+    const rawRows = json.data || json;
+    if (!Array.isArray(rawRows) || rawRows.length === 0) throw new Error('데이터가 비어 있습니다.');
+
+    const DATA = rawRows.map(normalizeRow).filter(Boolean);
+    if (DATA.length === 0) throw new Error('유효한 데이터 행이 없습니다. 컬럼명을 확인해주세요.');
+
+    render(DATA);
+
+    dot.className = 'sync-dot';
+    const now = new Date().toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    txt.textContent = `${now} 업데이트 · ${DATA.length}건`;
+
+  } catch(e) {
+    dot.className = 'sync-dot error';
+    txt.textContent = '데이터 로드 실패';
+    document.getElementById('overview-content').innerHTML = `
+      <div class="error-box">
+        <strong>⚠️ 구글 시트 데이터를 불러오지 못했습니다.</strong><br><br>
+        오류 내용: <code>${e.message}</code><br><br>
+        <strong>확인사항:</strong><br>
+        1. Apps Script 배포 시 액세스 권한이 <b>"모든 사용자"</b>로 설정되어 있는지 확인<br>
+        2. Apps Script → 배포 → 배포 관리에서 현재 배포가 활성 상태인지 확인<br>
+        3. 아래 버튼으로 다시 시도<br><br>
+        <button class="retry-btn" onclick="loadData()">↻ 다시 시도</button>
+      </div>`;
+    document.getElementById('data-content').innerHTML =
+      '<div class="loading-wrap"><span style="color:var(--coral)">데이터 로드 실패 — 새로고침 버튼을 눌러주세요.</span></div>';
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
